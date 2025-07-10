@@ -11,11 +11,19 @@ interface WeatherData {
   icon: string;
 }
 
+interface ForecastItem {
+  date: string;
+  temperature: number;
+  description: string;
+  icon: string;
+}
+
 const API_URL = 'http://localhost:8000/api/weather';
 
 export default function Home() {
   const [city, setCity] = useState('Almaty'); // Город по умолчанию
   const [weather, setWeather] = useState<WeatherData | null>(null);
+  const [forecast, setForecast] = useState<ForecastItem[]>([]);
   const [loading, setLoading] = useState(true); // true, чтобы загрузка началась сразу
   const [error, setError] = useState('');
 
@@ -24,8 +32,9 @@ export default function Home() {
     setError('');
     setWeather(null);
     try {
-      const response = await axios.get(`<span class="math-inline">\{API\_URL\}/</span>{cityName}`);
+      const response = await axios.get(`${API_URL}/${cityName}`);
       setWeather(response.data);
+      fetchForecast(cityName);
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Не удалось загрузить данные о погоде.');
     } finally {
@@ -33,9 +42,47 @@ export default function Home() {
     }
   };
 
-  // Загружаем погоду для города по умолчанию при первом рендере
+  const fetchForecast = async (cityName: string) => {
+    try {
+      const response = await axios.get(`http://localhost:8000/api/forecast/${cityName}`);
+      setForecast(response.data.forecast);
+    } catch (err) {
+      console.error('Ошибка загрузки прогноза');
+    }
+  };
+
+  const fetchByCoords = async (lat: number, lon: number) => {
+    setLoading(true);
+    setError('');
+    setWeather(null);
+    try {
+      const response = await axios.get(`http://localhost:8000/api/weather/coords`, {
+        params: { lat, lon },
+      });
+      setWeather(response.data);
+      fetchForecast(response.data.city_name);
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Ошибка определения местоположения.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Загружаем погоду при первом рендере
   useEffect(() => {
-    fetchWeather('Almaty');
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        pos => {
+          const { latitude, longitude } = pos.coords;
+          fetchByCoords(latitude, longitude);
+        },
+        () => {
+          fetchWeather('Almaty');
+        }
+      );
+    } else {
+      fetchWeather('Almaty');
+    }
   }, []);
 
   const handleSubmit = (e: FormEvent) => {
@@ -57,7 +104,11 @@ export default function Home() {
             placeholder="Введите город"
             className="flex-grow p-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 text-black"
           />
-          <button type="submit" disabled={loading} className="bg-blue-500 hover:bg-blue-600 text-white font-bold p-2 rounded-lg disabled:bg-blue-300">
+          <button
+            type="submit"
+            disabled={loading}
+            className="bg-blue-500 hover:bg-blue-600 text-white font-bold p-2 rounded-lg disabled:bg-blue-300"
+          >
             {loading ? '...' : '➔'}
           </button>
         </form>
@@ -78,6 +129,30 @@ export default function Home() {
               />
             </div>
             <p className="text-lg capitalize">{weather.description}</p>
+          </div>
+        )}
+
+        {forecast.length > 0 && (
+          <div className="mt-6">
+            <h3 className="text-lg font-semibold mb-2 text-gray-700">Прогноз на 5 дней</h3>
+            <div className="grid grid-cols-2 gap-4">
+              {forecast.map((day) => (
+                <div
+                  key={day.date}
+                  className="bg-white/70 p-3 rounded-lg flex flex-col items-center text-center text-gray-800 shadow"
+                >
+                  <p className="font-semibold">{day.date}</p>
+                  <Image
+                    src={`https://openweathermap.org/img/wn/${day.icon}.png`}
+                    alt={day.description}
+                    width={50}
+                    height={50}
+                  />
+                  <p>{Math.round(day.temperature)}°C</p>
+                  <p className="text-xs capitalize">{day.description}</p>
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </div>
